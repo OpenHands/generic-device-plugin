@@ -1,0 +1,70 @@
+name: OpenHands image
+
+# Builds Dockerfile.openhands, fails on any CRITICAL/HIGH finding that has a
+# fix available, and publishes ghcr.io/openhands/generic-device-plugin from
+# main. Pull requests build and scan without pushing.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/openhands/generic-device-plugin
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build amd64 for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.openhands
+          platforms: linux/amd64
+          load: true
+          tags: generic-device-plugin:scan
+          build-args: VERSION=${{ github.sha }}
+
+      - name: Scan (fail on fixable CRITICAL/HIGH)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.69.3 \
+            image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 \
+            generic-device-plugin:scan
+
+      - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+          flavor: latest=false
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.openhands
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.sha }}
