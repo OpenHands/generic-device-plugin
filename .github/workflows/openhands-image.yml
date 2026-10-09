@@ -1,8 +1,5 @@
 name: OpenHands image
 
-# Builds Dockerfile.openhands, fails on any CRITICAL/HIGH finding that has a
-# fix available, and publishes ghcr.io/openhands/generic-device-plugin from
-# main. Pull requests build and scan without pushing.
 on:
   push:
     branches: [main]
@@ -34,6 +31,8 @@ jobs:
           tags: generic-device-plugin:scan
           build-args: VERSION=${{ github.sha }}
 
+      # --ignore-unfixed: base-image CVEs with no released fix would otherwise
+      # block every build without anything to change here.
       - name: Scan (fail on fixable CRITICAL/HIGH)
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.69.3 \

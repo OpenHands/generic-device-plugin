@@ -1,7 +1,6 @@
-# OpenHands build of generic-device-plugin. Upstream's Dockerfile builds with
-# Nix, whose pinned Go can trail security releases; this pins the toolchain
-# directly so a Go CVE fix is a one-line bump. Output matches upstream's image:
-# a static binary at /generic-device-plugin on scratch.
+# Pins Go here because upstream's Nix build takes Go from nixpkgs, which can
+# trail security releases. Keep the binary at /generic-device-plugin: the
+# OpenHands chart passes only args and relies on this entrypoint.
 FROM --platform=$BUILDPLATFORM golang:1.26.9 AS builder
 
 ARG TARGETOS
@@ -13,7 +12,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -mod=vendor -trimpath \
       -ldflags "-s -w -X github.com/squat/generic-device-plugin/version.Version=${VERSION}" \
       -o /out/generic-device-plugin . \
- # Apache-2.0 §4(d): ship the NOTICE files of the dependencies compiled in.
+ # Apache-2.0 §4(d) requires shipping the compiled-in dependencies' NOTICE files.
  && mkdir -p /out/licenses \
  && for f in $(find vendor -name NOTICE | sort); do \
       printf '==> %s <==\n' "$(dirname "${f#vendor/}")"; cat "$f"; printf '\n'; \
