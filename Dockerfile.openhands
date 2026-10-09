@@ -1,0 +1,31 @@
+# OpenHands build of generic-device-plugin. Upstream's Dockerfile builds with
+# Nix, whose pinned Go can trail security releases; this pins the toolchain
+# directly so a Go CVE fix is a one-line bump. Output matches upstream's image:
+# a static binary at /generic-device-plugin on scratch.
+FROM --platform=$BUILDPLATFORM golang:1.26.9 AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=unknown
+
+WORKDIR /src
+COPY . .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -mod=vendor -trimpath \
+      -ldflags "-s -w -X github.com/squat/generic-device-plugin/version.Version=${VERSION}" \
+      -o /out/generic-device-plugin . \
+ # Apache-2.0 §4(d): ship the NOTICE files of the dependencies compiled in.
+ && mkdir -p /out/licenses \
+ && for f in $(find vendor -name NOTICE | sort); do \
+      printf '==> %s <==\n' "$(dirname "${f#vendor/}")"; cat "$f"; printf '\n'; \
+    done > /out/licenses/THIRD_PARTY_NOTICES
+
+FROM scratch
+ARG VERSION=unknown
+LABEL org.opencontainers.image.source="https://github.com/OpenHands/generic-device-plugin" \
+      org.opencontainers.image.description="Fork of squat/generic-device-plugin rebuilt with current Go and dependency security fixes" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.version="${VERSION}"
+COPY LICENSE /licenses/LICENSE
+COPY --from=builder /out/licenses/THIRD_PARTY_NOTICES /licenses/THIRD_PARTY_NOTICES
+COPY --from=builder /out/generic-device-plugin /generic-device-plugin
+ENTRYPOINT ["/generic-device-plugin"]
